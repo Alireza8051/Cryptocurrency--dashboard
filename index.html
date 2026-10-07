@@ -44,7 +44,6 @@
             gap: 12px;
         }
 
-        /* تب‌های انتخاب بازار */
         .tabs {
             display: flex;
             background: var(--card-bg);
@@ -68,10 +67,6 @@
             background: var(--accent);
             color: white;
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        .tab:hover:not(.active) {
-            background: #2a2a2a;
-            color: var(--text-main);
         }
 
         .header-status {
@@ -103,7 +98,6 @@
             font-size: 13px;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         }
         .notification-btn.enabled {
@@ -175,12 +169,13 @@
         }
         .price-label { font-size: 11px; color: var(--text-muted); }
         #price-display {
-            font-size: 26px;
+            font-size: 24px;
             font-weight: bold;
             direction: ltr;
             margin: 5px 0;
             transition: color 0.3s ease;
             word-break: break-all;
+            letter-spacing: -0.5px;
         }
         .currency { font-size: 12px; color: var(--text-muted); }
 
@@ -261,7 +256,7 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
         .indicator-label { font-size: 10px; color: var(--text-muted); margin-bottom: 5px; display: block; }
-        .indicator-value { font-size: 14px; font-weight: bold; direction: ltr; display: block; }
+        .indicator-value { font-size: 13px; font-weight: bold; direction: ltr; display: block; word-break: break-all; }
         
         .trend-up { color: var(--up-color); }
         .trend-down { color: var(--down-color); }
@@ -281,7 +276,6 @@
 <body>
 
     <div class="dashboard">
-        <!-- تب‌های انتخاب بازار -->
         <div class="tabs">
             <div id="tab-usdt" class="tab active" onclick="switchMarket('usdt')">💵 تتر</div>
             <div id="tab-btc" class="tab" onclick="switchMarket('btc')">₿ بیت‌کوین</div>
@@ -351,20 +345,72 @@
                 symbol: 'USDTIRT',
                 channel: 'public:market-stats-USDTIRT',
                 label: 'قیمت لحظه‌ای تتر',
-                currency: 'تومان',
-                divider: 10 // تقسیم بر 10 برای تومان
+                divider: 10,
+                historicalEnabled: false  // داده تاریخی تتر توسط نوبیتکس غیرفعال است
             },
             btc: {
                 name: 'بیت‌کوین',
                 symbol: 'BTCIRT',
                 channel: 'public:market-stats-BTCIRT',
                 label: 'قیمت لحظه‌ای بیت‌کوین',
-                currency: 'تومان',
-                divider: 10
+                divider: 10,
+                historicalEnabled: true   // داده تاریخی بیت‌کوین فعال است
             }
         };
 
-        let currentMarket = 'usdt';
+        let currentMarket = localStorage.getItem('currentMarket') || 'usdt';
+
+        // ================== ذخیره‌سازی پایدار (LocalStorage) ==================
+        const STORAGE_KEY = 'nobitex_dashboard_data';
+        
+        function loadPersistedData() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    // بازیابی داده‌های هر بازار
+                    for (const market in parsed) {
+                        if (marketData[market]) {
+                            Object.assign(marketData[market], parsed[market]);
+                        }
+                    }
+                    console.log('✅ داده‌های قبلی بازیابی شد');
+                    return true;
+                }
+            } catch (e) {
+                console.error('خطا در بازیابی داده‌ها:', e);
+            }
+            return false;
+        }
+
+        function savePersistedData() {
+            try {
+                const toSave = {};
+                for (const market in marketData) {
+                    toSave[market] = {
+                        priceHistory: marketData[market].priceHistory.slice(-50), // فقط 50 داده آخر
+                        rsiHistory: marketData[market].rsiHistory.slice(-30),
+                        avgGain: marketData[market].avgGain,
+                        avgLoss: marketData[market].avgLoss,
+                        rsiInit: marketData[market].rsiInit,
+                        lastPrice: marketData[market].lastPrice,
+                        lastSignal: marketData[market].lastSignal
+                    };
+                }
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+            } catch (e) {
+                console.error('خطا در ذخیره داده‌ها:', e);
+            }
+        }
+
+        // ذخیره خودکار هر 30 ثانیه
+        setInterval(savePersistedData, 30000);
+        
+        // ذخیره قبل از بسته شدن
+        window.addEventListener('beforeunload', savePersistedData);
+        window.addEventListener('visibilitychange', () => {
+            if (document.hidden) savePersistedData();
+        });
 
         // ================== ثبت Service Worker ==================
         let swRegistration = null;
@@ -430,12 +476,13 @@
         client.on('disconnected', () => {
             statusDot.className = 'status-dot disconnected';
             statusText.innerText = 'اتصال قطع شد، تلاش مجدد...';
+            // تلاش برای اتصال مجدد
+            setTimeout(() => client.connect(), 3000);
         });
         client.on('error', () => { statusText.innerText = 'خطا در اتصال'; });
         client.connect();
 
         // ================== داده‌های بازارها ==================
-        // هر بازار داده‌های مستقل خودش را دارد
         const marketData = {
             usdt: { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0, currentCandle: null },
             btc:  { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0, currentCandle: null }
@@ -475,7 +522,12 @@
                     if (chart) chart.applyOptions({ width: chartContainer.clientWidth });
                 });
 
-                loadHistoricalData(currentMarket);
+                // بارگذاری داده تاریخی برای بازار فعال
+                if (MARKETS[currentMarket].historicalEnabled) {
+                    loadHistoricalData(currentMarket);
+                } else {
+                    loadingEl.innerHTML = '⚠️ نمودار تتر موقتاً توسط نوبیتکس غیرفعال شده است.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>';
+                }
             } catch (error) {
                 loadingEl.innerText = 'نمودار در دسترس نیست';
             }
@@ -483,8 +535,10 @@
 
         // ================== دریافت داده تاریخی ==================
         async function loadHistoricalData(market) {
-            const loadingEl = document.getElementById('chart-loading');
             const cfg = MARKETS[market];
+            if (!cfg.historicalEnabled) return;
+
+            const loadingEl = document.getElementById('chart-loading');
             loadingEl.style.display = 'block';
             loadingEl.innerText = 'در حال دریافت داده تاریخی...';
 
@@ -509,10 +563,12 @@
                     }
                     if (candleSeries) candleSeries.setData(candles);
                     loadingEl.style.display = 'none';
+                    console.log(`✅ ${candles.length} کندل ${cfg.name} بارگذاری شد`);
                 } else {
-                    loadingEl.innerHTML = '⚠️ نمودار موقتاً توسط نوبیتکس غیرفعال شده است.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>';
+                    loadingEl.innerHTML = `⚠️ نمودار ${cfg.name} در دسترس نیست.`;
                 }
             } catch (e) {
+                console.error('خطا در داده تاریخی:', e);
                 loadingEl.innerText = 'نمودار در دسترس نیست';
             }
         }
@@ -548,7 +604,7 @@
 
         // ================== به‌روزرسانی کندل ==================
         function updateCandles(market, price) {
-            if (!candleSeries) return;
+            if (!candleSeries || !MARKETS[market].historicalEnabled) return;
             const d = marketData[market];
             const now = Math.floor(Date.now() / 1000);
             const candleTime = Math.floor(now / 60) * 60;
@@ -618,40 +674,33 @@
             d.lastNotificationTime = now;
         }
 
-        // ================== فرمت قیمت ==================
-        function formatPrice(price) {
-            // اگر قیمت بزرگ‌تر از یک میلیون بود، به صورت مختصر نمایش بده
-            if (price >= 1000000) {
-                return (price / 1000000).toFixed(2) + 'M';
-            }
-            return price.toLocaleString('fa-IR', { maximumFractionDigits: 0 });
+        // ================== فرمت قیمت (بدون رند کردن) ==================
+        function formatPriceExact(price) {
+            // قیمت را دقیقاً همان‌طور که هست نمایش بده، فقط با جداکننده هزارگان
+            return Math.round(price).toLocaleString('fa-IR');
         }
 
         // ================== به‌روزرسانی داشبورد ==================
         function updateDashboard(market, price) {
-            // اگر بازار فعال نیست، فقط داده را ذخیره کن
             const d = marketData[market];
+            
+            // افکت بصری برای تغییر قیمت (حتی اگر بازار فعال نباشد)
+            const prevPrice = d.lastPrice;
             d.lastPrice = price;
 
             if (market !== currentMarket) return;
 
             const priceDisplay = document.getElementById('price-display');
-            const prevPrice = d.priceHistory[d.priceHistory.length - 1] || 0;
             
-            if (prevPrice !== 0) {
+            if (prevPrice !== 0 && prevPrice !== undefined) {
                 const flashClass = price > prevPrice ? 'flash-up' : 'flash-down';
                 document.querySelector('.price-card').classList.remove('flash-up', 'flash-down');
                 void document.querySelector('.price-card').offsetWidth;
                 document.querySelector('.price-card').classList.add(flashClass);
             }
             
-            // نمایش قیمت با فرمت مناسب
-            if (price >= 1000000) {
-                priceDisplay.innerText = (price / 1000000).toFixed(2) + ' M';
-                priceDisplay.title = price.toLocaleString('fa-IR') + ' تومان';
-            } else {
-                priceDisplay.innerText = price.toLocaleString('fa-IR', { maximumFractionDigits: 0 });
-            }
+            // نمایش دقیق قیمت (بدون رند شدن)
+            priceDisplay.innerText = formatPriceExact(price);
 
             updateCandles(market, price);
 
@@ -662,9 +711,7 @@
             let sma = null;
             if (d.priceHistory.length >= SMA_PERIOD) {
                 sma = d.priceHistory.reduce((a, b) => a + b, 0) / SMA_PERIOD;
-                document.getElementById('sma-display').innerText = sma >= 1000000 
-                    ? (sma / 1000000).toFixed(2) + 'M'
-                    : sma.toLocaleString('fa-IR', { maximumFractionDigits: 0 });
+                document.getElementById('sma-display').innerText = formatPriceExact(sma);
                 
                 const trendDisplay = document.getElementById('trend-display');
                 if (price > sma) {
@@ -729,15 +776,86 @@
             document.getElementById('power-display').innerText = signal.power;
         }
 
+        // ================== رندر مجدد داشبورد از داده‌های ذخیره‌شده ==================
+        function reRenderDashboard(market) {
+            const d = marketData[market];
+            if (d.lastPrice === 0) return;
+
+            // قیمت
+            document.getElementById('price-display').innerText = formatPriceExact(d.lastPrice);
+
+            // SMA
+            if (d.priceHistory.length >= SMA_PERIOD) {
+                const sma = d.priceHistory.reduce((a, b) => a + b, 0) / SMA_PERIOD;
+                document.getElementById('sma-display').innerText = formatPriceExact(sma);
+                const trendDisplay = document.getElementById('trend-display');
+                if (d.lastPrice > sma) {
+                    trendDisplay.innerText = 'صعودی';
+                    trendDisplay.className = 'indicator-value trend-up';
+                    document.getElementById('price-display').style.color = 'var(--up-color)';
+                } else if (d.lastPrice < sma) {
+                    trendDisplay.innerText = 'نزولی';
+                    trendDisplay.className = 'indicator-value trend-down';
+                    document.getElementById('price-display').style.color = 'var(--down-color)';
+                }
+            } else {
+                document.getElementById('sma-display').innerText = `${d.priceHistory.length}/${SMA_PERIOD}`;
+            }
+
+            // RSI
+            if (d.rsiInit) {
+                // محاسبه RSI از آخرین داده ذخیره‌شده
+                let gains = 0, losses = 0;
+                for (let i = 1; i < d.rsiHistory.length; i++) {
+                    const diff = d.rsiHistory[i] - d.rsiHistory[i - 1];
+                    if (diff > 0) gains += diff;
+                    else losses += Math.abs(diff);
+                }
+                const avgG = gains / (d.rsiHistory.length - 1);
+                const avgL = losses / (d.rsiHistory.length - 1);
+                let rsi = 100;
+                if (avgL !== 0) {
+                    const rs = avgG / avgL;
+                    rsi = 100 - (100 / (1 + rs));
+                }
+                document.getElementById('rsi-display').innerText = rsi.toFixed(1);
+                document.getElementById('rsi-marker').style.left = `${rsi}%`;
+            } else {
+                document.getElementById('rsi-display').innerText = `${d.rsiHistory.length}/${RSI_PERIOD + 1}`;
+            }
+
+            // سیگنال
+            if (d.priceHistory.length >= SMA_PERIOD && d.rsiHistory.length >= RSI_PERIOD + 1) {
+                const sma = d.priceHistory.reduce((a, b) => a + b, 0) / SMA_PERIOD;
+                const rsi = calculateRSI(market, d.lastPrice);
+                const signal = generateSignal(d.lastPrice, sma, rsi);
+                
+                document.getElementById('signal-card').className = 'signal-card ' + signal.type;
+                document.getElementById('signal-icon').innerText = signal.icon;
+                document.getElementById('signal-text').innerText = signal.text;
+                document.getElementById('signal-text').className = 'signal-text ' + signal.type;
+                document.getElementById('signal-reason').innerText = signal.reason;
+                document.getElementById('power-display').innerText = signal.power;
+                document.getElementById('confidence-fill').style.width = `${signal.confidence}%`;
+
+                let barColor = '#444';
+                if (signal.type === 'strong-buy') barColor = 'var(--strong-buy)';
+                else if (signal.type === 'buy') barColor = 'var(--up-color)';
+                else if (signal.type === 'strong-sell') barColor = 'var(--strong-sell)';
+                else if (signal.type === 'sell') barColor = 'var(--down-color)';
+                else if (signal.type === 'warning') barColor = 'var(--warn-color)';
+                document.getElementById('confidence-fill').style.background = barColor;
+            }
+        }
+
         // ================== سوییچ بین بازارها ==================
         function switchMarket(market) {
             currentMarket = market;
+            localStorage.setItem('currentMarket', market);
             
-            // تغییر تب فعال
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.getElementById('tab-' + market).classList.add('active');
 
-            // تغییر برچسب قیمت
             document.getElementById('price-label').innerText = MARKETS[market].label;
 
             // بازنشانی نمایش‌ها
@@ -753,26 +871,38 @@
             document.getElementById('signal-text').className = 'signal-text neutral';
             document.getElementById('signal-reason').innerText = 'منتظر دریافت داده کافی برای تحلیل';
             document.getElementById('signal-card').className = 'signal-card neutral';
+            document.getElementById('price-display').style.color = 'var(--text-main)';
 
-            // بارگذاری داده تاریخی بازار جدید
+            // پاک کردن نمودار
             if (candleSeries) candleSeries.setData([]);
-            loadHistoricalData(market);
+
+            // اگر داده ذخیره‌شده داریم، دوباره رندر کن
+            if (marketData[market].lastPrice !== 0) {
+                reRenderDashboard(market);
+            }
+
+            // بارگذاری داده تاریخی (فقط اگر برای این بازار فعال باشد)
+            const loadingEl = document.getElementById('chart-loading');
+            if (MARKETS[market].historicalEnabled) {
+                loadingEl.style.display = 'block';
+                loadHistoricalData(market);
+            } else {
+                loadingEl.style.display = 'block';
+                loadingEl.innerHTML = `⚠️ نمودار ${MARKETS[market].name} موقتاً توسط نوبیتکس غیرفعال شده است.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>`;
+            }
 
             console.log(`🔄 سوییچ به بازار: ${MARKETS[market].name}`);
         }
 
         // ================== اشتراک در کانال‌ها ==================
-        // کانال تتر
         const subUSDT = client.newSubscription(MARKETS.usdt.channel, { delta: 'fossil' });
         subUSDT.on('publication', (ctx) => processData(ctx, 'usdt'));
         subUSDT.subscribe();
 
-        // کانال بیت‌کوین
         const subBTC = client.newSubscription(MARKETS.btc.channel, { delta: 'fossil' });
         subBTC.on('publication', (ctx) => processData(ctx, 'btc'));
         subBTC.subscribe();
 
-        // کانال ALL (پشتیبان برای هر دو بازار)
         const subAll = client.newSubscription('public:market-stats-all', { delta: 'fossil' });
         subAll.on('publication', (ctx) => {
             processData(ctx, 'usdt');
@@ -782,9 +912,19 @@
 
         // ================== راه‌اندازی نهایی ==================
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => setTimeout(initChart, 300));
+            document.addEventListener('DOMContentLoaded', () => {
+                loadPersistedData();
+                setTimeout(() => {
+                    initChart();
+                    setTimeout(() => switchMarket(currentMarket), 500);
+                }, 300);
+            });
         } else {
-            setTimeout(initChart, 300);
+            loadPersistedData();
+            setTimeout(() => {
+                initChart();
+                setTimeout(() => switchMarket(currentMarket), 500);
+            }, 300);
         }
 
     </script>
