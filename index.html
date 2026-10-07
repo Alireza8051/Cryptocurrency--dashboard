@@ -1,0 +1,810 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121212">
+    <title>داشبورد تحلیل تتر</title>
+    
+    <!-- Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <script src="https://unpkg.com/centrifuge@5/dist/centrifuge.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --up-color: #00c853;
+            --down-color: #ff1744;
+            --warn-color: #ffc107;
+            --strong-buy: #00e676;
+            --strong-sell: #d50000;
+        }
+
+        body {
+            font-family: Tahoma, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .header-status {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+        .status-dot.connected { background-color: var(--up-color); animation: none; }
+        .status-dot.disconnected { background-color: var(--down-color); animation: none; }
+
+        /* دکمه فعال‌سازی اعلان */
+        .notification-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 20px;
+            font-family: Tahoma, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .notification-btn:active {
+            transform: scale(0.97);
+        }
+        .notification-btn.enabled {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4);
+        }
+        .notification-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .signal-card {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+            border-radius: 20px;
+            padding: 25px 20px;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+            transition: all 0.5s ease;
+            border: 2px solid transparent;
+        }
+        .signal-card.buy { border-color: var(--up-color); box-shadow: 0 8px 25px rgba(0, 200, 83, 0.3); }
+        .signal-card.sell { border-color: var(--down-color); box-shadow: 0 8px 25px rgba(255, 23, 68, 0.3); }
+        .signal-card.strong-buy { border-color: var(--strong-buy); box-shadow: 0 8px 30px rgba(0, 230, 118, 0.5); animation: glowGreen 1.5s infinite alternate; }
+        .signal-card.strong-sell { border-color: var(--strong-sell); box-shadow: 0 8px 30px rgba(213, 0, 0, 0.5); animation: glowRed 1.5s infinite alternate; }
+        .signal-card.warning { border-color: var(--warn-color); box-shadow: 0 8px 25px rgba(255, 193, 7, 0.3); }
+        .signal-card.neutral { border-color: #444; }
+
+        @keyframes glowGreen {
+            from { box-shadow: 0 8px 30px rgba(0, 230, 118, 0.3); }
+            to { box-shadow: 0 8px 40px rgba(0, 230, 118, 0.7); }
+        }
+        @keyframes glowRed {
+            from { box-shadow: 0 8px 30px rgba(213, 0, 0, 0.3); }
+            to { box-shadow: 0 8px 40px rgba(213, 0, 0, 0.7); }
+        }
+
+        .signal-label { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; letter-spacing: 1px; }
+        .signal-icon { font-size: 52px; margin: 10px 0; display: block; }
+        .signal-text { font-size: 26px; font-weight: bold; margin: 10px 0; display: block; }
+        .signal-text.buy { color: var(--up-color); }
+        .signal-text.sell { color: var(--down-color); }
+        .signal-text.strong-buy { color: var(--strong-buy); }
+        .signal-text.strong-sell { color: var(--strong-sell); }
+        .signal-text.warning { color: var(--warn-color); }
+        .signal-text.neutral { color: var(--text-muted); }
+        
+        .signal-reason {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 10px;
+            line-height: 1.8;
+            padding: 0 10px;
+        }
+
+        .confidence-bar {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease, background 0.5s ease;
+        }
+
+        .price-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .price-label { font-size: 11px; color: var(--text-muted); }
+        #price-display {
+            font-size: 28px;
+            font-weight: bold;
+            direction: ltr;
+            margin: 3px 0;
+            transition: color 0.3s ease;
+        }
+        .currency { font-size: 12px; color: var(--text-muted); }
+
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            position: relative;
+            min-height: 150px;
+        }
+        #chart-container {
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+        }
+        .chart-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--warn-color);
+            font-size: 12px;
+            z-index: 10;
+            text-align: center;
+            line-height: 1.8;
+            padding: 0 20px;
+            width: 90%;
+        }
+
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .indicator-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 10px 5px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .indicator-label { font-size: 10px; color: var(--text-muted); margin-bottom: 5px; display: block; }
+        .indicator-value { font-size: 16px; font-weight: bold; direction: ltr; display: block; }
+        
+        .trend-up { color: var(--up-color); }
+        .trend-down { color: var(--down-color); }
+        .trend-neutral { color: var(--text-muted); }
+
+        .rsi-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 12px 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .rsi-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .rsi-title { font-size: 12px; color: var(--text-muted); }
+        .rsi-value { font-size: 22px; font-weight: bold; direction: ltr; }
+        
+        .rsi-bar-container {
+            height: 8px;
+            background: linear-gradient(to right, 
+                #00c853 0%, #00c853 30%, 
+                #ffc107 30%, #ffc107 70%, 
+                #ff1744 70%, #ff1744 100%);
+            border-radius: 4px;
+            position: relative;
+            margin: 8px 0;
+        }
+        .rsi-marker {
+            position: absolute;
+            top: -3px;
+            width: 3px;
+            height: 14px;
+            background: white;
+            border-radius: 2px;
+            transition: left 0.3s ease;
+            box-shadow: 0 0 6px rgba(255,255,255,0.8);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .flash-up { animation: flashGreen 0.5s; }
+        .flash-down { animation: flashRed 0.5s; }
+        @keyframes flashGreen { 0% { background-color: rgba(0, 200, 83, 0.2); } 100% { background-color: transparent; } }
+        @keyframes flashRed { 0% { background-color: rgba(255, 23, 68, 0.2); } 100% { background-color: transparent; } }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="header-status">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text">در حال اتصال...</span>
+        </div>
+
+        <!-- دکمه فعال‌سازی اعلان -->
+        <button id="notification-btn" class="notification-btn" onclick="enableNotifications()">
+            🔔 فعال‌سازی اعلان‌های Push
+        </button>
+
+        <!-- کارت سیگنال -->
+        <div id="signal-card" class="signal-card neutral">
+            <div class="signal-label">سیگنال معاملاتی</div>
+            <span id="signal-icon" class="signal-icon">⏳</span>
+            <span id="signal-text" class="signal-text neutral">در حال تحلیل...</span>
+            <div id="signal-reason" class="signal-reason">منتظر دریافت داده کافی برای تحلیل</div>
+            <div class="confidence-bar">
+                <div id="confidence-fill" class="confidence-fill" style="width: 0%; background: #444;"></div>
+            </div>
+        </div>
+
+        <div class="price-card">
+            <div class="price-label">قیمت لحظه‌ای تتر</div>
+            <div id="price-display">---</div>
+            <div class="currency">تومان</div>
+        </div>
+
+        <div class="chart-card">
+            <div id="chart-loading" class="chart-loading">در حال راه‌اندازی نمودار...</div>
+            <div id="chart-container"></div>
+        </div>
+
+        <div class="rsi-card">
+            <div class="rsi-header">
+                <span class="rsi-title">RSI (14)</span>
+                <span id="rsi-display" class="rsi-value trend-neutral">--</span>
+            </div>
+            <div class="rsi-bar-container">
+                <div id="rsi-marker" class="rsi-marker" style="left: 50%;"></div>
+            </div>
+        </div>
+
+        <div class="indicators-grid">
+            <div class="indicator-card">
+                <span class="indicator-label">SMA 20</span>
+                <span id="sma-display" class="indicator-value trend-neutral">--</span>
+            </div>
+            <div class="indicator-card">
+                <span class="indicator-label">روند</span>
+                <span id="trend-display" class="indicator-value trend-neutral">--</span>
+            </div>
+            <div class="indicator-card">
+                <span class="indicator-label">قدرت</span>
+                <span id="power-display" class="indicator-value trend-neutral">--</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================== ۱. ثبت Service Worker ==================
+        let swRegistration = null;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then((reg) => {
+                    swRegistration = reg;
+                    console.log('✅ Service Worker ثبت شد:', reg.scope);
+                    checkNotificationStatus();
+                })
+                .catch((err) => {
+                    console.error('❌ خطا در ثبت Service Worker:', err);
+                });
+        } else {
+            console.warn('⚠️ مرورگر شما از Service Worker پشتیبانی نمی‌کند');
+        }
+
+        // ================== ۲. مدیریت اعلان‌ها ==================
+        function checkNotificationStatus() {
+            const btn = document.getElementById('notification-btn');
+            
+            if (!('Notification' in window)) {
+                btn.innerText = '❌ اعلان‌ها پشتیبانی نمی‌شوند';
+                btn.disabled = true;
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                btn.innerText = '✅ اعلان‌ها فعال هستند';
+                btn.classList.add('enabled');
+                btn.disabled = true;
+            } else if (Notification.permission === 'denied') {
+                btn.innerText = '🚫 اعلان‌ها مسدود شده‌اند';
+                btn.disabled = true;
+            } else {
+                btn.innerText = '🔔 فعال‌سازی اعلان‌های Push';
+            }
+        }
+
+        async function enableNotifications() {
+            const btn = document.getElementById('notification-btn');
+            
+            try {
+                const permission = await Notification.requestPermission();
+                
+                if (permission === 'granted') {
+                    btn.innerText = '✅ اعلان‌ها فعال هستند';
+                    btn.classList.add('enabled');
+                    btn.disabled = true;
+                    
+                    // ارسال یک اعلان تست
+                    showNotification(
+                        '🎉 اعلان‌ها فعال شدند!',
+                        'از این به بعد سیگنال‌های قوی را دریافت خواهید کرد.',
+                        'test-notification'
+                    );
+                    
+                    console.log('✅ مجوز اعلان صادر شد');
+                } else {
+                    btn.innerText = '🚫 اعلان‌ها مسدود شدند';
+                    btn.disabled = true;
+                    console.log('❌ کاربر مجوز اعلان را رد کرد');
+                }
+            } catch (error) {
+                console.error('❌ خطا در درخواست مجوز:', error);
+            }
+        }
+
+        function showNotification(title, body, tag) {
+            if (!swRegistration) {
+                console.warn('⚠️ Service Worker آماده نیست');
+                return;
+            }
+
+            if (Notification.permission !== 'granted') {
+                return;
+            }
+
+            // ارسال پیام به Service Worker برای نمایش اعلان
+            swRegistration.active.postMessage({
+                type: 'SHOW_NOTIFICATION',
+                payload: {
+                    title: title,
+                    body: body,
+                    tag: tag,
+                    icon: 'icon-192.png'
+                }
+            });
+        }
+
+        // ================== ۳. متغیرهای اصلی ==================
+        const WS_URL = 'wss://ws.nobitex.ir/connection/websocket';
+        const CHANNEL_USDT_IRT = 'public:market-stats-USDTIRT'; 
+        const CHANNEL_ALL = 'public:market-stats-all';
+        
+        const SMA_PERIOD = 20;
+        const RSI_PERIOD = 14;
+        
+        let priceHistory = [];
+        let priceHistoryForRSI = [];
+        let avgGain = 0;
+        let avgLoss = 0;
+        let rsiInitialized = false;
+        let lastPrice = 0;
+        let currentCandle = null;
+        let candleSeries = null;
+        let chart = null;
+        let lastSignal = null;
+        let lastNotificationTime = 0;
+        const NOTIFICATION_COOLDOWN = 60000; // حداقل ۱ دقیقه بین اعلان‌ها
+
+        // ================== ۴. اتصال WebSocket ==================
+        const client = new Centrifuge(WS_URL, {});
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+
+        client.on('connected', () => {
+            statusDot.className = 'status-dot connected';
+            statusText.innerText = 'متصل به سرور نوبیتکس';
+        });
+
+        client.on('disconnected', () => {
+            statusDot.className = 'status-dot disconnected';
+            statusText.innerText = 'اتصال قطع شد، تلاش مجدد...';
+        });
+
+        client.on('error', (err) => {
+            statusText.innerText = 'خطا در اتصال';
+        });
+
+        client.connect();
+
+        // ================== ۵. راه‌اندازی نمودار ==================
+        function initChart() {
+            const loadingEl = document.getElementById('chart-loading');
+            try {
+                if (typeof LightweightCharts === 'undefined') throw new Error("کتابخانه نمودار بارگذاری نشد.");
+
+                const chartContainer = document.getElementById('chart-container');
+                const width = chartContainer.clientWidth || window.innerWidth || 350;
+
+                chart = LightweightCharts.createChart(chartContainer, {
+                    width: width,
+                    height: 200,
+                    layout: { background: { color: '#1e1e1e' }, textColor: '#888888' },
+                    grid: { vertLines: { color: '#2a2a2a' }, horzLines: { color: '#2a2a2a' } },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#333333' },
+                    rightPriceScale: { borderColor: '#333333', scaleMargins: { top: 0.1, bottom: 0.1 } },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+                });
+
+                candleSeries = chart.addCandlestickSeries({
+                    upColor: '#00c853', downColor: '#ff1744',
+                    borderVisible: false, wickUpColor: '#00c853', wickDownColor: '#ff1744'
+                });
+
+                window.addEventListener('resize', () => {
+                    if (chart) chart.applyOptions({ width: chartContainer.clientWidth });
+                });
+
+                loadHistoricalData();
+            } catch (error) {
+                loadingEl.innerText = 'نمودار در دسترس نیست';
+            }
+        }
+
+        // ================== ۶. دریافت داده تاریخی ==================
+        async function loadHistoricalData() {
+            const loadingEl = document.getElementById('chart-loading');
+            const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=1&countback=500`;
+            const proxyUrl = `https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=${encodeURIComponent(nobitexUrl)}`;
+
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                
+                if (data.s === 'ok' && data.t && data.t.length > 0) {
+                    const candles = [];
+                    for (let i = 0; i < data.t.length; i++) {
+                        candles.push({
+                            time: data.t[i],
+                            open: Number(data.o[i]) / 10,
+                            high: Number(data.h[i]) / 10,
+                            low: Number(data.l[i]) / 10,
+                            close: Number(data.c[i]) / 10
+                        });
+                    }
+                    if (candleSeries) candleSeries.setData(candles);
+                    loadingEl.style.display = 'none';
+                } else {
+                    loadingEl.innerHTML = '⚠️ نمودار موقتاً توسط نوبیتکس غیرفعال شده است.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>';
+                }
+            } catch (e) {
+                loadingEl.innerText = 'نمودار در دسترس نیست';
+            }
+        }
+
+        // ================== ۷. محاسبه RSI ==================
+        function calculateRSI(newPrice) {
+            priceHistoryForRSI.push(newPrice);
+            if (priceHistoryForRSI.length > RSI_PERIOD + 1) priceHistoryForRSI.shift();
+
+            if (priceHistoryForRSI.length < RSI_PERIOD + 1) return null;
+
+            if (!rsiInitialized) {
+                let gains = 0, losses = 0;
+                for (let i = 1; i < priceHistoryForRSI.length; i++) {
+                    const diff = priceHistoryForRSI[i] - priceHistoryForRSI[i - 1];
+                    if (diff > 0) gains += diff;
+                    else losses += Math.abs(diff);
+                }
+                avgGain = gains / RSI_PERIOD;
+                avgLoss = losses / RSI_PERIOD;
+                rsiInitialized = true;
+            } else {
+                const lastDiff = priceHistoryForRSI[priceHistoryForRSI.length - 1] - priceHistoryForRSI[priceHistoryForRSI.length - 2];
+                const currentGain = lastDiff > 0 ? lastDiff : 0;
+                const currentLoss = lastDiff < 0 ? Math.abs(lastDiff) : 0;
+
+                avgGain = ((avgGain * (RSI_PERIOD - 1)) + currentGain) / RSI_PERIOD;
+                avgLoss = ((avgLoss * (RSI_PERIOD - 1)) + currentLoss) / RSI_PERIOD;
+            }
+
+            if (avgLoss === 0) return 100;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
+
+        // ================== ۸. توابع به‌روزرسانی ==================
+        function updateCandles(price) {
+            if (!candleSeries) return;
+            const now = Math.floor(Date.now() / 1000);
+            const timeFrame = 60; 
+            const candleTime = Math.floor(now / timeFrame) * timeFrame;
+
+            if (!currentCandle || currentCandle.time < candleTime) {
+                currentCandle = { time: candleTime, open: price, high: price, low: price, close: price };
+            } else {
+                currentCandle.high = Math.max(currentCandle.high, price);
+                currentCandle.low = Math.min(currentCandle.low, price);
+                currentCandle.close = price;
+            }
+            candleSeries.update(currentCandle);
+        }
+
+        function processData(ctx) {
+            let data = ctx.data;
+            let latestPrice = null;
+
+            if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch (e) {}
+            }
+
+            if (data) {
+                if (data.latest) {
+                    latestPrice = data.latest;
+                } else {
+                    const possibleKeys = ['usdt-rls', 'usdt-irt', 'USDT-RLS', 'USDT-IRT', 'usdtirt', 'usdtrls'];
+                    for (let key of possibleKeys) {
+                        if (data[key] && data[key].latest) {
+                            latestPrice = data[key].latest;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (latestPrice) {
+                const priceToman = Number(latestPrice) / 10;
+                updateDashboard(priceToman);
+            }
+        }
+
+        // ================== ۹. سیستم سیگنال ترکیبی ==================
+        function generateSignal(price, sma, rsi, trend) {
+            if (sma === null || rsi === null) {
+                return {
+                    type: 'neutral', icon: '⏳', text: 'در حال تحلیل...',
+                    reason: 'منتظر دریافت داده کافی برای تحلیل',
+                    confidence: 0, power: '--'
+                };
+            }
+
+            const isAboveSMA = price > sma;
+            const isBelowSMA = price < sma;
+
+            if (isAboveSMA && rsi < 30) {
+                return { type: 'strong-buy', icon: '🚀', text: 'خرید قوی',
+                    reason: `روند صعودی + RSI اشباع فروش (${rsi.toFixed(1)}) — فرصت طلایی`,
+                    confidence: 95, power: 'بسیار بالا' };
+            }
+
+            if (isBelowSMA && rsi > 70) {
+                return { type: 'strong-sell', icon: '⚠️', text: 'فروش قوی',
+                    reason: `روند نزولی + RSI اشباع خرید (${rsi.toFixed(1)}) — احتمال ریزش شدید`,
+                    confidence: 95, power: 'بسیار بالا' };
+            }
+
+            if (isAboveSMA && rsi >= 30 && rsi < 70) {
+                return { type: 'buy', icon: '📈', text: 'خرید',
+                    reason: `روند صعودی + RSI در محدوده نرمال (${rsi.toFixed(1)})`,
+                    confidence: 65, power: 'متوسط' };
+            }
+
+            if (isBelowSMA && rsi >= 30 && rsi < 70) {
+                return { type: 'sell', icon: '📉', text: 'فروش',
+                    reason: `روند نزولی + RSI در محدوده نرمال (${rsi.toFixed(1)})`,
+                    confidence: 65, power: 'متوسط' };
+            }
+
+            if (isAboveSMA && rsi > 70) {
+                return { type: 'warning', icon: '⚡', text: 'احتیاط',
+                    reason: `روند صعودی اما RSI اشباع خرید (${rsi.toFixed(1)}) — احتمال اصلاح موقت`,
+                    confidence: 50, power: 'متوسط' };
+            }
+
+            if (isBelowSMA && rsi < 30) {
+                return { type: 'warning', icon: '⚡', text: 'احتیاط',
+                    reason: `روند نزولی اما RSI اشباع فروش (${rsi.toFixed(1)}) — احتمال بازگشت`,
+                    confidence: 50, power: 'متوسط' };
+            }
+
+            return { type: 'neutral', icon: '⏸️', text: 'خنثی',
+                reason: 'شرایط بازار نامشخص است — منتظر بمانید',
+                confidence: 30, power: 'پایین' };
+        }
+
+        // ================== ۱۰. ارسال اعلان برای سیگنال‌های قوی ==================
+        function sendSignalNotification(signal, price) {
+            // فقط برای سیگنال‌های قوی
+            if (signal.type !== 'strong-buy' && signal.type !== 'strong-sell') {
+                return;
+            }
+
+            // محدودیت زمانی برای جلوگیری از اسپم
+            const now = Date.now();
+            if (now - lastNotificationTime < NOTIFICATION_COOLDOWN) {
+                console.log('⏸️ اعلان به دلیل محدودیت زمانی ارسال نشد');
+                return;
+            }
+
+            if (Notification.permission !== 'granted') {
+                return;
+            }
+
+            const priceFormatted = price.toLocaleString('fa-IR') + ' تومان';
+            
+            let title, body;
+            if (signal.type === 'strong-buy') {
+                title = '🚀 سیگنال خرید قوی تتر';
+                body = `قیمت: ${priceFormatted}\nدلیل: ${signal.reason}`;
+            } else {
+                title = '⚠️ سیگنال فروش قوی تتر';
+                body = `قیمت: ${priceFormatted}\nدلیل: ${signal.reason}`;
+            }
+
+            showNotification(title, body, 'signal-' + signal.type);
+            lastNotificationTime = now;
+            console.log('📤 اعلان ارسال شد:', title);
+        }
+
+        // ================== ۱۱. به‌روزرسانی داشبورد ==================
+        function updateDashboard(price) {
+            const priceDisplay = document.getElementById('price-display');
+            
+            if (lastPrice !== 0) {
+                const flashClass = price > lastPrice ? 'flash-up' : 'flash-down';
+                document.querySelector('.price-card').classList.remove('flash-up', 'flash-down');
+                void document.querySelector('.price-card').offsetWidth;
+                document.querySelector('.price-card').classList.add(flashClass);
+            }
+            
+            priceDisplay.innerText = price.toLocaleString('fa-IR');
+            lastPrice = price;
+
+            updateCandles(price);
+
+            // SMA
+            priceHistory.push(price);
+            if (priceHistory.length > SMA_PERIOD) priceHistory.shift();
+
+            let sma = null;
+            let trend = 'neutral';
+
+            if (priceHistory.length >= SMA_PERIOD) {
+                sma = priceHistory.reduce((a, b) => a + b, 0) / SMA_PERIOD;
+                document.getElementById('sma-display').innerText = sma.toLocaleString('fa-IR', { maximumFractionDigits: 0 });
+                
+                const trendDisplay = document.getElementById('trend-display');
+                
+                if (price > sma) {
+                    trend = 'up';
+                    trendDisplay.innerText = 'صعودی';
+                    trendDisplay.className = 'indicator-value trend-up';
+                    priceDisplay.style.color = 'var(--up-color)';
+                } else if (price < sma) {
+                    trend = 'down';
+                    trendDisplay.innerText = 'نزولی';
+                    trendDisplay.className = 'indicator-value trend-down';
+                    priceDisplay.style.color = 'var(--down-color)';
+                } else {
+                    trendDisplay.innerText = 'خنثی';
+                    trendDisplay.className = 'indicator-value trend-neutral';
+                    priceDisplay.style.color = 'var(--text-main)';
+                }
+            } else {
+                document.getElementById('sma-display').innerText = `${priceHistory.length}/${SMA_PERIOD}`;
+            }
+
+            // RSI
+            const rsi = calculateRSI(price);
+            const rsiDisplay = document.getElementById('rsi-display');
+            const rsiMarker = document.getElementById('rsi-marker');
+
+            if (rsi !== null) {
+                rsiDisplay.innerText = rsi.toFixed(1);
+                rsiMarker.style.left = `${rsi}%`;
+
+                if (rsi >= 70) rsiDisplay.className = 'rsi-value trend-down';
+                else if (rsi <= 30) rsiDisplay.className = 'rsi-value trend-up';
+                else rsiDisplay.className = 'rsi-value trend-neutral';
+            } else {
+                rsiDisplay.innerText = `${priceHistoryForRSI.length}/${RSI_PERIOD + 1}`;
+            }
+
+            // سیگنال
+            const signal = generateSignal(price, sma, rsi, trend);
+            
+            const signalCard = document.getElementById('signal-card');
+            const signalIcon = document.getElementById('signal-icon');
+            const signalText = document.getElementById('signal-text');
+            const signalReason = document.getElementById('signal-reason');
+            const confidenceFill = document.getElementById('confidence-fill');
+
+            if (lastSignal !== signal.type) {
+                signalCard.className = 'signal-card ' + signal.type;
+                
+                // ارسال اعلان فقط وقتی سیگنال تغییر می‌کند
+                if (lastSignal !== null) {
+                    sendSignalNotification(signal, price);
+                }
+                
+                lastSignal = signal.type;
+            }
+
+            signalIcon.innerText = signal.icon;
+            signalText.innerText = signal.text;
+            signalText.className = 'signal-text ' + signal.type;
+            signalReason.innerText = signal.reason;
+            
+            confidenceFill.style.width = `${signal.confidence}%`;
+            
+            let barColor = '#444';
+            if (signal.type === 'strong-buy') barColor = 'var(--strong-buy)';
+            else if (signal.type === 'buy') barColor = 'var(--up-color)';
+            else if (signal.type === 'strong-sell') barColor = 'var(--strong-sell)';
+            else if (signal.type === 'sell') barColor = 'var(--down-color)';
+            else if (signal.type === 'warning') barColor = 'var(--warn-color)';
+            
+            confidenceFill.style.background = barColor;
+
+            document.getElementById('power-display').innerText = signal.power;
+        }
+
+        // ================== ۱۲. شروع اشتراک‌ها ==================
+        const sub1 = client.newSubscription(CHANNEL_USDT_IRT, { delta: 'fossil' });
+        sub1.on('publication', (ctx) => processData(ctx));
+        sub1.subscribe();
+
+        const sub2 = client.newSubscription(CHANNEL_ALL, { delta: 'fossil' });
+        sub2.on('publication', (ctx) => processData(ctx));
+        sub2.subscribe();
+
+        // ================== ۱۳. راه‌اندازی نهایی ==================
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => setTimeout(initChart, 300));
+        } else {
+            setTimeout(initChart, 300);
+        }
+
+    </script>
+
+</body>
+</html>
