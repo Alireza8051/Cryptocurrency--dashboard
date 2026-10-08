@@ -2,109 +2,516 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تست پروکسی نوبیتکس</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121212">
+    <title>داشبورد تحلیل نوبیتکس</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://unpkg.com/centrifuge@5/dist/centrifuge.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { font-family: Tahoma; background: #121212; color: white; padding: 15px; margin: 0; }
-        .card { background: #1e1e1e; padding: 15px; border-radius: 12px; margin-bottom: 10px; }
-        h3 { color: #667eea; margin-top: 0; }
-        .result { background: #000; padding: 10px; border-radius: 8px; font-size: 11px; direction: ltr; text-align: left; overflow-x: auto; word-break: break-all; max-height: 200px; overflow-y: auto; margin-top: 10px; }
-        .ok { color: #00c853; }
-        .err { color: #ff1744; }
-        .warn { color: #ffc107; }
-        #chart { height: 250px; background: #1e1e1e; border-radius: 12px; }
-        button { background: #667eea; color: white; border: none; padding: 10px 15px; border-radius: 8px; font-family: Tahoma; margin: 5px; cursor: pointer; }
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --up-color: #00c853;
+            --down-color: #ff1744;
+            --warn-color: #ffc107;
+            --strong-buy: #00e676;
+            --strong-sell: #d50000;
+            --accent: #667eea;
+        }
+        body { font-family: Tahoma, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 15px; display: flex; justify-content: center; min-height: 100vh; }
+        .dashboard { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; }
+        .tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: 5px; gap: 5px; }
+        .tab { flex: 1; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; color: var(--text-muted); transition: all 0.3s ease; user-select: none; }
+        .tab.active { background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .header-status { text-align: center; font-size: 12px; color: var(--text-muted); display: flex; justify-content: center; align-items: center; gap: 5px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #ffc107; animation: pulse 1.5s infinite; }
+        .status-dot.connected { background-color: var(--up-color); animation: none; }
+        .status-dot.disconnected { background-color: var(--down-color); animation: none; }
+        .notification-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 12px; padding: 10px 20px; font-family: Tahoma, sans-serif; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); }
+        .notification-btn.enabled { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .signal-card { background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%); border-radius: 20px; padding: 22px 20px; text-align: center; box-shadow: 0 8px 25px rgba(0,0,0,0.4); transition: all 0.5s ease; border: 2px solid transparent; }
+        .signal-card.buy { border-color: var(--up-color); }
+        .signal-card.sell { border-color: var(--down-color); }
+        .signal-card.strong-buy { border-color: var(--strong-buy); animation: glowGreen 1.5s infinite alternate; }
+        .signal-card.strong-sell { border-color: var(--strong-sell); animation: glowRed 1.5s infinite alternate; }
+        .signal-card.warning { border-color: var(--warn-color); }
+        .signal-card.neutral { border-color: #444; }
+        @keyframes glowGreen { from { box-shadow: 0 8px 30px rgba(0, 230, 118, 0.3); } to { box-shadow: 0 8px 40px rgba(0, 230, 118, 0.7); } }
+        @keyframes glowRed { from { box-shadow: 0 8px 30px rgba(213, 0, 0, 0.3); } to { box-shadow: 0 8px 40px rgba(213, 0, 0, 0.7); } }
+        .signal-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; }
+        .signal-icon { font-size: 46px; margin: 8px 0; display: block; }
+        .signal-text { font-size: 24px; font-weight: bold; margin: 8px 0; display: block; }
+        .signal-text.buy { color: var(--up-color); }
+        .signal-text.sell { color: var(--down-color); }
+        .signal-text.strong-buy { color: var(--strong-buy); }
+        .signal-text.strong-sell { color: var(--strong-sell); }
+        .signal-text.warning { color: var(--warn-color); }
+        .signal-text.neutral { color: var(--text-muted); }
+        .signal-reason { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.7; }
+        .confidence-bar { height: 5px; background: #333; border-radius: 3px; margin-top: 12px; overflow: hidden; }
+        .confidence-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease, background 0.5s ease; }
+        .price-card { background: var(--card-bg); border-radius: 16px; padding: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .price-label { font-size: 11px; color: var(--text-muted); }
+        #price-display { font-size: 22px; font-weight: bold; direction: ltr; margin: 5px 0; transition: color 0.3s ease; word-break: break-all; letter-spacing: -0.5px; }
+        .currency { font-size: 12px; color: var(--text-muted); }
+        .chart-card { background: var(--card-bg); border-radius: 16px; padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); position: relative; min-height: 150px; }
+        #chart-container { width: 100%; height: 220px; border-radius: 8px; }
+        .chart-loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--warn-color); font-size: 11px; z-index: 10; text-align: center; line-height: 1.8; padding: 0 20px; width: 90%; }
+        .rsi-card { background: var(--card-bg); border-radius: 16px; padding: 12px 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .rsi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .rsi-title { font-size: 12px; color: var(--text-muted); }
+        .rsi-value { font-size: 20px; font-weight: bold; direction: ltr; }
+        .rsi-bar-container { height: 8px; background: linear-gradient(to right, #00c853 0%, #00c853 30%, #ffc107 30%, #ffc107 70%, #ff1744 70%, #ff1744 100%); border-radius: 4px; position: relative; margin: 8px 0; }
+        .rsi-marker { position: absolute; top: -3px; width: 3px; height: 14px; background: white; border-radius: 2px; transition: left 0.3s ease; box-shadow: 0 0 6px rgba(255,255,255,0.8); }
+        .indicators-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        .indicator-card { background: var(--card-bg); border-radius: 12px; padding: 10px 5px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .indicator-label { font-size: 10px; color: var(--text-muted); margin-bottom: 5px; display: block; }
+        .indicator-value { font-size: 12px; font-weight: bold; direction: ltr; display: block; word-break: break-all; }
+        .trend-up { color: var(--up-color); }
+        .trend-down { color: var(--down-color); }
+        .trend-neutral { color: var(--text-muted); }
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+        .flash-up { animation: flashGreen 0.5s; }
+        .flash-down { animation: flashRed 0.5s; }
+        @keyframes flashGreen { 0% { background-color: rgba(0, 200, 83, 0.2); } 100% { background-color: transparent; } }
+        @keyframes flashRed { 0% { background-color: rgba(255, 23, 68, 0.2); } 100% { background-color: transparent; } }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h3>🧪 تست اتصال به نوبیتکس</h3>
-        <button onclick="testProxy('BTCIRT', 1)">تست BTC (resolution=1)</button>
-        <button onclick="testProxy('BTCIRT', 5)">تست BTC (resolution=5)</button>
-        <button onclick="testProxy('BTCIRT', 60)">تست BTC (resolution=60)</button>
-        <button onclick="testProxy('USDTIRT', 1)">تست USDT (resolution=1)</button>
+    <div class="dashboard">
+        <div class="tabs">
+            <div id="tab-usdt" class="tab active" onclick="switchMarket('usdt')">💵 تتر</div>
+            <div id="tab-btc" class="tab" onclick="switchMarket('btc')">₿ بیت‌کوین</div>
+        </div>
+        <div class="header-status">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text">در حال اتصال...</span>
+        </div>
+        <button id="notification-btn" class="notification-btn" onclick="enableNotifications()">🔔 فعال‌سازی اعلان‌های Push</button>
+        <div id="signal-card" class="signal-card neutral">
+            <div class="signal-label">سیگنال معاملاتی</div>
+            <span id="signal-icon" class="signal-icon">⏳</span>
+            <span id="signal-text" class="signal-text neutral">در حال تحلیل...</span>
+            <div id="signal-reason" class="signal-reason">منتظر دریافت داده کافی برای تحلیل</div>
+            <div class="confidence-bar"><div id="confidence-fill" class="confidence-fill" style="width: 0%; background: #444;"></div></div>
+        </div>
+        <div class="price-card">
+            <div class="price-label" id="price-label">قیمت لحظه‌ای تتر</div>
+            <div id="price-display">---</div>
+            <div class="currency">تومان</div>
+        </div>
+        <div class="chart-card">
+            <div id="chart-loading" class="chart-loading">در حال راه‌اندازی نمودار...</div>
+            <div id="chart-container"></div>
+        </div>
+        <div class="rsi-card">
+            <div class="rsi-header"><span class="rsi-title">RSI (14)</span><span id="rsi-display" class="rsi-value trend-neutral">--</span></div>
+            <div class="rsi-bar-container"><div id="rsi-marker" class="rsi-marker" style="left: 50%;"></div></div>
+        </div>
+        <div class="indicators-grid">
+            <div class="indicator-card"><span class="indicator-label">SMA 20</span><span id="sma-display" class="indicator-value trend-neutral">--</span></div>
+            <div class="indicator-card"><span class="indicator-label">روند</span><span id="trend-display" class="indicator-value trend-neutral">--</span></div>
+            <div class="indicator-card"><span class="indicator-label">قدرت</span><span id="power-display" class="indicator-value trend-neutral">--</span></div>
+        </div>
     </div>
-
-    <div class="card">
-        <h3>📋 نتیجه تست:</h3>
-        <div id="result" class="result">منتظر تست...</div>
-    </div>
-
-    <div class="card">
-        <h3>📊 نمودار (اگر داده بیاید):</h3>
-        <div id="chart"></div>
-    </div>
-
     <script>
-        let candleSeries = null;
-        let chart = null;
-
-        function initChart() {
-            const chartContainer = document.getElementById('chart');
-            chart = LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 250,
-                layout: { background: { color: '#1e1e1e' }, textColor: '#fff' },
-                grid: { vertLines: { color: '#2a2a2a' }, horzLines: { color: '#2a2a2a' } },
-                timeScale: { timeVisible: true, secondsVisible: false }
-            });
-            candleSeries = chart.addCandlestickSeries({
-                upColor: '#00c853', downColor: '#ff1744'
-            });
-        }
-
-        async function testProxy(symbol, resolution) {
-            const resultEl = document.getElementById('result');
-            resultEl.innerHTML = `<span class="warn">⏳ در حال تست ${symbol} با resolution=${resolution}...</span>`;
-
-            const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=${symbol}&resolution=${resolution}&countback=500`;
-            const proxyUrl = `https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=${encodeURIComponent(nobitexUrl)}`;
-
-            resultEl.innerHTML += `<br><br><strong>URL:</strong><br>${proxyUrl}`;
-
+        // ================== تنظیمات بازارها ==================
+        const MARKETS = {
+            usdt: {
+                name: 'تتر',
+                symbol: 'USDTIRT',
+                channel: 'public:market-stats-USDTIRT',
+                label: 'قیمت لحظه‌ای تتر',
+                divider: 10,
+                dataSource: 'candle' // تتر: کانال WebSocket کندل
+            },
+            btc: {
+                name: 'بیت‌کوین',
+                symbol: 'BTCIRT',
+                channel: 'public:market-stats-BTCIRT',
+                label: 'قیمت لحظه‌ای بیت‌کوین',
+                divider: 10,
+                dataSource: 'udf' // بیت‌کوین: API تاریخی
+            }
+        };
+        let currentMarket = localStorage.getItem('currentMarket') || 'usdt';
+        // ================== ذخیره‌سازی ==================
+        const STORAGE_KEY = 'nobitex_dashboard_v2';
+        function savePersistedData() {
             try {
-                const response = await fetch(proxyUrl);
-                const text = await response.text();
-                
-                resultEl.innerHTML += `<br><br><strong>HTTP Status:</strong> ${response.status}`;
-                resultEl.innerHTML += `<br><strong>Response (اول 500 کاراکتر):</strong><br>${text.substring(0, 500)}`;
-
+                const toSave = {};
+                for (const m in marketData) {
+                    toSave[m] = {
+                        priceHistory: marketData[m].priceHistory.slice(-50),
+                        rsiHistory: marketData[m].rsiHistory.slice(-30),
+                        avgGain: marketData[m].avgGain,
+                        avgLoss: marketData[m].avgLoss,
+                        rsiInit: marketData[m].rsiInit,
+                        lastPrice: marketData[m].lastPrice,
+                        lastSignal: marketData[m].lastSignal
+                    };
+                }
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+            } catch (e) { console.error(e); }
+        }
+        function loadPersistedData() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    const p = JSON.parse(saved);
+                    for (const m in p) if (marketData[m]) Object.assign(marketData[m], p[m]);
+                    console.log('✅ داده‌ها بازیابی شد');
+                    return true;
+                }
+            } catch (e) { console.error(e); }
+            return false;
+        }
+        setInterval(savePersistedData, 30000);
+        window.addEventListener('beforeunload', savePersistedData);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) savePersistedData(); });
+        // ================== Service Worker ==================
+        let swRegistration = null;
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(reg => { swRegistration = reg; checkNotificationStatus(); }).catch(e => console.error(e));
+        }
+        // ================== اعلان‌ها ==================
+        function checkNotificationStatus() {
+            const btn = document.getElementById('notification-btn');
+            if (!('Notification' in window)) { btn.innerText = '❌ پشتیبانی نمی‌شود'; btn.disabled = true; return; }
+            if (Notification.permission === 'granted') { btn.innerText = '✅ اعلان‌ها فعال هستند'; btn.classList.add('enabled'); btn.disabled = true; }
+            else if (Notification.permission === 'denied') { btn.innerText = '🚫 مسدود شده'; btn.disabled = true; }
+            else { btn.innerText = '🔔 فعال‌سازی اعلان‌های Push'; }
+        }
+        async function enableNotifications() {
+            try {
+                const p = await Notification.requestPermission();
+                if (p === 'granted') { checkNotificationStatus(); showNotification('🎉 فعال شد!', 'اعلان‌های قوی را دریافت می‌کنید.', 'test'); }
+            } catch (e) { console.error(e); }
+        }
+        function showNotification(title, body, tag) {
+            if (!swRegistration || Notification.permission !== 'granted') return;
+            swRegistration.active.postMessage({ type: 'SHOW_NOTIFICATION', payload: { title, body, tag, icon: 'icon-192.png' } });
+        }
+        // ================== WebSocket ==================
+        const WS_URL = 'wss://ws.nobitex.ir/connection/websocket';
+        const client = new Centrifuge(WS_URL, {});
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        client.on('connected', () => { statusDot.className = 'status-dot connected'; statusText.innerText = 'متصل به سرور نوبیتکس'; });
+        client.on('disconnected', () => { statusDot.className = 'status-dot disconnected'; statusText.innerText = 'اتصال قطع شد، تلاش مجدد...'; setTimeout(() => client.connect(), 3000); });
+        client.on('error', () => { statusText.innerText = 'خطا در اتصال'; });
+        client.connect();
+        // ================== داده‌های بازارها ==================
+        const marketData = {
+            usdt: { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0 },
+            btc: { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0 }
+        };
+        const SMA_PERIOD = 20, RSI_PERIOD = 14, NOTIFICATION_COOLDOWN = 60000;
+        let candleSeries = null, chart = null, activeCandleSub = null;
+        // ================== نمودار ==================
+        function initChart() {
+            const loadingEl = document.getElementById('chart-loading');
+            try {
+                if (typeof LightweightCharts === 'undefined') throw new Error("کتابخانه نمودار بارگذاری نشد.");
+                const container = document.getElementById('chart-container');
+                chart = LightweightCharts.createChart(container, {
+                    width: container.clientWidth || 350, height: 220,
+                    layout: { background: { color: '#1e1e1e' }, textColor: '#888888' },
+                    grid: { vertLines: { color: '#2a2a2a' }, horzLines: { color: '#2a2a2a' } },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#333333' },
+                    rightPriceScale: { borderColor: '#333333', scaleMargins: { top: 0.1, bottom: 0.1 } },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+                });
+                candleSeries = chart.addCandlestickSeries({ upColor: '#00c853', downColor: '#ff1744', borderVisible: false, wickUpColor: '#00c853', wickDownColor: '#ff1744' });
+                window.addEventListener('resize', () => { if (chart) chart.applyOptions({ width: container.clientWidth }); });
+                loadChartForMarket(currentMarket);
+            } catch (e) { loadingEl.innerText = 'نمودار در دسترس نیست'; }
+        }
+        // ================== بارگذاری نمودار ==================
+        function loadChartForMarket(market) {
+            const cfg = MARKETS[market];
+            const loadingEl = document.getElementById('chart-loading');
+            if (candleSeries) candleSeries.setData([]);
+            loadingEl.style.display = 'block';
+            loadingEl.style.color = 'var(--warn-color)';
+            loadingEl.innerText = `در حال دریافت داده ${cfg.name}...`;
+            if (cfg.dataSource === 'udf') {
+                loadFromUDF(market);
+            } else {
+                loadFromCandleChannel(market);
+            }
+        }
+        // ================== ۱. API تاریخی (برای BTC) ==================
+        async function loadFromUDF(market) {
+            const cfg = MARKETS[market];
+            const loadingEl = document.getElementById('chart-loading');
+            const resolutions = [60, 15, 5, 1]; // ترتیب: 1 ساعت، 15 دقیقه، 5 دقیقه، 1 دقیقه
+            const PROXY = 'https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=';
+            for (const res of resolutions) {
+                const timestamp = Date.now(); // cache buster
+                const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=${cfg.symbol}&resolution=${res}&countback=500&_=${timestamp}`;
+                const proxyUrl = PROXY + encodeURIComponent(nobitexUrl);
                 try {
-                    const data = JSON.parse(text);
-                    
+                    console.log(`🔄 تلاش UDF ${cfg.symbol} resolution=${res}`);
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
                     if (data.s === 'ok' && data.t && data.t.length > 0) {
-                        resultEl.innerHTML += `<br><br><span class="ok">✅ موفق! ${data.t.length} کندل دریافت شد.</span>`;
-                        
                         const candles = [];
                         for (let i = 0; i < data.t.length; i++) {
                             candles.push({
                                 time: data.t[i],
-                                open: Number(data.o[i]) / 10,
-                                high: Number(data.h[i]) / 10,
-                                low: Number(data.l[i]) / 10,
-                                close: Number(data.c[i]) / 10
+                                open: Number(data.o[i]) / cfg.divider,
+                                high: Number(data.h[i]) / cfg.divider,
+                                low: Number(data.l[i]) / cfg.divider,
+                                close: Number(data.c[i]) / cfg.divider
                             });
                         }
-                        if (candleSeries) candleSeries.setData(candles);
-                        chart.timeScale().fitContent();
-                    } else if (data.s === 'no_data') {
-                        resultEl.innerHTML += `<br><br><span class="warn">⚠️ نوبیتکس گفت: no_data (داده‌ای برای این بازه ندارد)</span>`;
+                        if (candleSeries) { candleSeries.setData(candles); chart.timeScale().fitContent(); }
+                        loadingEl.style.display = 'none';
+                        console.log(`✅ ${candles.length} کندل ${cfg.name} (resolution=${res}) بارگذاری شد.`);
+                        // بعد از بارگذاری تاریخی، کانال کندل زنده را هم فعال کن
+                        loadFromCandleChannel(market, true);
+                        return;
                     } else {
-                        resultEl.innerHTML += `<br><br><span class="err">❌ پاسخ نامعتبر: ${JSON.stringify(data).substring(0, 200)}</span>`;
+                        console.warn(`⚠️ resolution=${res} پاسخ:`, data.s);
                     }
-                } catch (parseErr) {
-                    resultEl.innerHTML += `<br><br><span class="err">❌ پاسخ JSON معتبر نیست: ${parseErr.message}</span>`;
+                } catch (e) {
+                    console.error(`❌ خطا در resolution=${res}:`, e.message);
                 }
-            } catch (fetchErr) {
-                resultEl.innerHTML += `<br><br><span class="err">❌ خطای Fetch: ${fetchErr.message}</span>`;
+            }
+            // اگر UDF شکست خورد، به کانال WebSocket سوییچ کن
+            console.warn(`⚠️ UDF برای ${cfg.name} ناموفق بود. سوییچ به کانال WebSocket...`);
+            loadingEl.innerText = 'UDF در دسترس نیست، سوییچ به WebSocket...';
+            loadFromCandleChannel(market);
+        }
+        // ================== ۲. کانال WebSocket کندل (برای USDT و پشتیبان) ==================
+        function loadFromCandleChannel(market, silent = false) {
+            const cfg = MARKETS[market];
+            const loadingEl = document.getElementById('chart-loading');
+            // لغو اشتراک قبلی
+            if (activeCandleSub) { try { activeCandleSub.unsubscribe(); } catch (e) {} activeCandleSub = null; }
+            if (market !== currentMarket) return;
+            if (!silent) loadingEl.innerText = `در حال اتصال به کانال کندل ${cfg.name}...`;
+            const candleSub = client.newSubscription(`public:candle-${cfg.symbol}-60`, { delta: 'fossil' });
+            activeCandleSub = candleSub;
+            candleSub.on('subscribed', () => {
+                console.log(`✅ اشتراک در کانال کندل ${cfg.symbol} انجام شد`);
+                if (!silent) loadingEl.style.display = 'none';
+            });
+            candleSub.on('publication', (ctx) => {
+                const data = ctx.data;
+                if (data && data.t && data.o && data.h && data.l && data.c) {
+                    const candle = {
+                        time: data.t,
+                        open: Number(data.o) / cfg.divider,
+                        high: Number(data.h) / cfg.divider,
+                        low: Number(data.l) / cfg.divider,
+                        close: Number(data.c) / cfg.divider
+                    };
+                    if (candleSeries && market === currentMarket) {
+                        candleSeries.update(candle);
+                        loadingEl.style.display = 'none';
+                    }
+                }
+            });
+            candleSub.on('error', (err) => {
+                console.error(`⚠️ خطا در کانال کندل ${cfg.name}:`, err);
+                if (!silent) loadingEl.innerText = `خطا در دریافت کندل ${cfg.name}`;
+            });
+            candleSub.subscribe();
+        }
+        // ================== RSI ==================
+        function calculateRSI(market, newPrice) {
+            const d = marketData[market];
+            d.rsiHistory.push(newPrice);
+            if (d.rsiHistory.length > RSI_PERIOD + 1) d.rsiHistory.shift();
+            if (d.rsiHistory.length < RSI_PERIOD + 1) return null;
+            if (!d.rsiInit) {
+                let gains = 0, losses = 0;
+                for (let i = 1; i < d.rsiHistory.length; i++) {
+                    const diff = d.rsiHistory[i] - d.rsiHistory[i - 1];
+                    if (diff > 0) gains += diff; else losses += Math.abs(diff);
+                }
+                d.avgGain = gains / RSI_PERIOD;
+                d.avgLoss = losses / RSI_PERIOD;
+                d.rsiInit = true;
+            } else {
+                const lastDiff = d.rsiHistory[d.rsiHistory.length - 1] - d.rsiHistory[d.rsiHistory.length - 2];
+                const curGain = lastDiff > 0 ? lastDiff : 0;
+                const curLoss = lastDiff < 0 ? Math.abs(lastDiff) : 0;
+                d.avgGain = ((d.avgGain * (RSI_PERIOD - 1)) + curGain) / RSI_PERIOD;
+                d.avgLoss = ((d.avgLoss * (RSI_PERIOD - 1)) + curLoss) / RSI_PERIOD;
+            }
+            if (d.avgLoss === 0) return 100;
+            const rs = d.avgGain / d.avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
+        // ================== پردازش داده ==================
+        function processData(ctx, market) {
+            let data = ctx.data;
+            let latestPrice = null;
+            if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) {} }
+            if (data) {
+                if (data.latest) latestPrice = data.latest;
+                else {
+                    const key = MARKETS[market].symbol.toLowerCase();
+                    if (data[key] && data[key].latest) latestPrice = data[key].latest;
+                }
+            }
+            if (latestPrice) {
+                const price = Number(latestPrice) / MARKETS[market].divider;
+                updateDashboard(market, price);
             }
         }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initChart);
-        } else {
+        // ================== سیگنال ==================
+        function generateSignal(price, sma, rsi) {
+            if (sma === null || rsi === null) return { type: 'neutral', icon: '⏳', text: 'در حال تحلیل...', reason: 'منتظر دریافت داده کافی', confidence: 0, power: '--' };
+            const isAbove = price > sma, isBelow = price < sma;
+            if (isAbove && rsi < 30) return { type: 'strong-buy', icon: '🚀', text: 'خرید قوی', reason: `روند صعودی + RSI اشباع فروش (${rsi.toFixed(1)})`, confidence: 95, power: 'بسیار بالا' };
+            if (isBelow && rsi > 70) return { type: 'strong-sell', icon: '⚠️', text: 'فروش قوی', reason: `روند نزولی + RSI اشباع خرید (${rsi.toFixed(1)})`, confidence: 95, power: 'بسیار بالا' };
+            if (isAbove && rsi >= 30 && rsi < 70) return { type: 'buy', icon: '📈', text: 'خرید', reason: `روند صعودی + RSI نرمال (${rsi.toFixed(1)})`, confidence: 65, power: 'متوسط' };
+            if (isBelow && rsi >= 30 && rsi < 70) return { type: 'sell', icon: '📉', text: 'فروش', reason: `روند نزولی + RSI نرمال (${rsi.toFixed(1)})`, confidence: 65, power: 'متوسط' };
+            if (isAbove && rsi > 70) return { type: 'warning', icon: '⚡', text: 'احتیاط', reason: `RSI اشباع خرید (${rsi.toFixed(1)}) در روند صعودی`, confidence: 50, power: 'متوسط' };
+            if (isBelow && rsi < 30) return { type: 'warning', icon: '⚡', text: 'احتیاط', reason: `RSI اشباع فروش (${rsi.toFixed(1)}) در روند نزولی`, confidence: 50, power: 'متوسط' };
+            return { type: 'neutral', icon: '⏸️', text: 'خنثی', reason: 'شرایط نامشخص', confidence: 30, power: 'پایین' };
+        }
+        // ================== اعلان ==================
+        function sendSignalNotification(market, signal, price) {
+            if (signal.type !== 'strong-buy' && signal.type !== 'strong-sell') return;
+            const d = marketData[market];
+            const now = Date.now();
+            if (now - d.lastNotificationTime < NOTIFICATION_COOLDOWN) return;
+            if (Notification.permission !== 'granted') return;
+            const marketName = MARKETS[market].name;
+            const priceFormatted = price.toLocaleString('fa-IR') + ' تومان';
+            const title = signal.type === 'strong-buy' ? `🚀 خرید قوی ${marketName}` : `⚠️ فروش قوی ${marketName}`;
+            showNotification(title, `قیمت: ${priceFormatted}\n${signal.reason}`, 'signal-' + market);
+            d.lastNotificationTime = now;
+        }
+        // ================== فرمت دقیق قیمت ==================
+        function formatExact(price) {
+            return Math.round(price).toLocaleString('fa-IR');
+        }
+        // ================== به‌روزرسانی داشبورد ==================
+        function updateDashboard(market, price) {
+            const d = marketData[market];
+            const prevPrice = d.lastPrice;
+            d.lastPrice = price;
+            if (market !== currentMarket) return;
+            const priceDisplay = document.getElementById('price-display');
+            if (prevPrice !== 0) {
+                const flashClass = price > prevPrice ? 'flash-up' : 'flash-down';
+                document.querySelector('.price-card').classList.remove('flash-up', 'flash-down');
+                void document.querySelector('.price-card').offsetWidth;
+                document.querySelector('.price-card').classList.add(flashClass);
+            }
+            priceDisplay.innerText = formatExact(price);
+            d.priceHistory.push(price);
+            if (d.priceHistory.length > SMA_PERIOD) d.priceHistory.shift();
+            let sma = null;
+            if (d.priceHistory.length >= SMA_PERIOD) {
+                sma = d.priceHistory.reduce((a, b) => a + b, 0) / SMA_PERIOD;
+                document.getElementById('sma-display').innerText = formatExact(sma);
+                const td = document.getElementById('trend-display');
+                if (price > sma) { td.innerText = 'صعودی'; td.className = 'indicator-value trend-up'; priceDisplay.style.color = 'var(--up-color)'; }
+                else if (price < sma) { td.innerText = 'نزولی'; td.className = 'indicator-value trend-down'; priceDisplay.style.color = 'var(--down-color)'; }
+                else { td.innerText = 'خنثی'; td.className = 'indicator-value trend-neutral'; priceDisplay.style.color = 'var(--text-main)'; }
+            } else {
+                document.getElementById('sma-display').innerText = `${d.priceHistory.length}/${SMA_PERIOD}`;
+            }
+            const rsi = calculateRSI(market, price);
+            const rsiDisplay = document.getElementById('rsi-display');
+            const rsiMarker = document.getElementById('rsi-marker');
+            if (rsi !== null) {
+                rsiDisplay.innerText = rsi.toFixed(1);
+                rsiMarker.style.left = `${rsi}%`;
+                if (rsi >= 70) rsiDisplay.className = 'rsi-value trend-down';
+                else if (rsi <= 30) rsiDisplay.className = 'rsi-value trend-up';
+                else rsiDisplay.className = 'rsi-value trend-neutral';
+            } else {
+                rsiDisplay.innerText = `${d.rsiHistory.length}/${RSI_PERIOD + 1}`;
+            }
+            const signal = generateSignal(price, sma, rsi);
+            const signalCard = document.getElementById('signal-card');
+            const signalIcon = document.getElementById('signal-icon');
+            const signalText = document.getElementById('signal-text');
+            const signalReason = document.getElementById('signal-reason');
+            const cf = document.getElementById('confidence-fill');
+            if (d.lastSignal !== signal.type) {
+                signalCard.className = 'signal-card ' + signal.type;
+                if (d.lastSignal !== null) sendSignalNotification(market, signal, price);
+                d.lastSignal = signal.type;
+            }
+            signalIcon.innerText = signal.icon;
+            signalText.innerText = signal.text;
+            signalText.className = 'signal-text ' + signal.type;
+            signalReason.innerText = signal.reason;
+            cf.style.width = `${signal.confidence}%`;
+            let barColor = '#444';
+            if (signal.type === 'strong-buy') barColor = 'var(--strong-buy)';
+            else if (signal.type === 'buy') barColor = 'var(--up-color)';
+            else if (signal.type === 'strong-sell') barColor = 'var(--strong-sell)';
+            else if (signal.type === 'sell') barColor = 'var(--down-color)';
+            else if (signal.type === 'warning') barColor = 'var(--warn-color)';
+            cf.style.background = barColor;
+            document.getElementById('power-display').innerText = signal.power;
+        }
+        // ================== سوییچ ==================
+        function switchMarket(market) {
+            currentMarket = market;
+            localStorage.setItem('currentMarket', market);
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + market).classList.add('active');
+            document.getElementById('price-label').innerText = MARKETS[market].label;
+            // بازنشانی
+            document.getElementById('price-display').innerText = '---';
+            document.getElementById('price-display').style.color = 'var(--text-main)';
+            document.getElementById('sma-display').innerText = '--';
+            document.getElementById('trend-display').innerText = '--';
+            document.getElementById('trend-display').className = 'indicator-value trend-neutral';
+            document.getElementById('power-display').innerText = '--';
+            document.getElementById('rsi-display').innerText = '--';
+            document.getElementById('rsi-marker').style.left = '50%';
+            document.getElementById('signal-icon').innerText = '⏳';
+            document.getElementById('signal-text').innerText = 'در حال تحلیل...';
+            document.getElementById('signal-text').className = 'signal-text neutral';
+            document.getElementById('signal-reason').innerText = 'منتظر دریافت داده کافی برای تحلیل';
+            document.getElementById('signal-card').className = 'signal-card neutral';
+            // بارگذاری نمودار
+            loadChartForMarket(market);
+            // اگر داده ذخیره داریم، سریع نمایش بده
+            if (marketData[market].lastPrice !== 0) {
+                setTimeout(() => {
+                    const d = marketData[market];
+                    document.getElementById('price-display').innerText = formatExact(d.lastPrice);
+                }, 100);
+            }
+            console.log(`🔄 سوییچ به ${MARKETS[market].name}`);
+        }
+        // ================== اشتراک‌ها ==================
+        const subUSDT = client.newSubscription(MARKETS.usdt.channel, { delta: 'fossil' });
+        subUSDT.on('publication', (ctx) => processData(ctx, 'usdt'));
+        subUSDT.subscribe();
+        const subBTC = client.newSubscription(MARKETS.btc.channel, { delta: 'fossil' });
+        subBTC.on('publication', (ctx) => processData(ctx, 'btc'));
+        subBTC.subscribe();
+        const subAll = client.newSubscription('public:market-stats-all', { delta: 'fossil' });
+        subAll.on('publication', (ctx) => { processData(ctx, 'usdt'); processData(ctx, 'btc'); });
+        subAll.subscribe();
+        // ================== راه‌اندازی ==================
+        function init() {
+            loadPersistedData();
             initChart();
+            setTimeout(() => switchMarket(currentMarket), 500);
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
         }
     </script>
 </body>
