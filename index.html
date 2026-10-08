@@ -9,18 +9,7 @@
     <script src="https://unpkg.com/centrifuge@5/dist/centrifuge.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-main: #ffffff;
-            --text-muted: #888888;
-            --up-color: #00c853;
-            --down-color: #ff1744;
-            --warn-color: #ffc107;
-            --strong-buy: #00e676;
-            --strong-sell: #d50000;
-            --accent: #667eea;
-        }
+        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-main: #ffffff; --text-muted: #888888; --up-color: #00c853; --down-color: #ff1744; --warn-color: #ffc107; --strong-buy: #00e676; --strong-sell: #d50000; --accent: #667eea; }
         body { font-family: Tahoma, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 15px; display: flex; justify-content: center; min-height: 100vh; }
         .dashboard { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; }
         .tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: 5px; gap: 5px; }
@@ -55,7 +44,7 @@
         .confidence-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease, background 0.5s ease; }
         .price-card { background: var(--card-bg); border-radius: 16px; padding: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         .price-label { font-size: 11px; color: var(--text-muted); }
-        #price-display { font-size: 22px; font-weight: bold; direction: ltr; margin: 5px 0; transition: color 0.3s ease; word-break: break-all; letter-spacing: -0.5px; }
+        #price-display { font-size: 22px; font-weight: bold; direction: ltr; margin: 5px 0; word-break: break-all; letter-spacing: -0.5px; }
         .currency { font-size: 12px; color: var(--text-muted); }
         .chart-card { background: var(--card-bg); border-radius: 16px; padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); position: relative; min-height: 150px; }
         #chart-container { width: 100%; height: 220px; border-radius: 8px; }
@@ -125,21 +114,20 @@
                 symbol: 'USDTIRT',
                 channel: 'public:market-stats-USDTIRT',
                 label: 'قیمت لحظه‌ای تتر',
-                divider: 10,
-                dataSource: 'candle' // تتر: کانال WebSocket کندل
+                divider: 10
             },
             btc: {
                 name: 'بیت‌کوین',
                 symbol: 'BTCIRT',
                 channel: 'public:market-stats-BTCIRT',
                 label: 'قیمت لحظه‌ای بیت‌کوین',
-                divider: 10,
-                dataSource: 'udf' // بیت‌کوین: API تاریخی
+                divider: 10
             }
         };
         let currentMarket = localStorage.getItem('currentMarket') || 'usdt';
+
         // ================== ذخیره‌سازی ==================
-        const STORAGE_KEY = 'nobitex_dashboard_v2';
+        const STORAGE_KEY = 'nobitex_dashboard_v3';
         function savePersistedData() {
             try {
                 const toSave = {};
@@ -163,20 +151,18 @@
                 if (saved) {
                     const p = JSON.parse(saved);
                     for (const m in p) if (marketData[m]) Object.assign(marketData[m], p[m]);
-                    console.log('✅ داده‌ها بازیابی شد');
-                    return true;
                 }
             } catch (e) { console.error(e); }
-            return false;
         }
         setInterval(savePersistedData, 30000);
         window.addEventListener('beforeunload', savePersistedData);
-        document.addEventListener('visibilitychange', () => { if (document.hidden) savePersistedData(); });
+
         // ================== Service Worker ==================
         let swRegistration = null;
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').then(reg => { swRegistration = reg; checkNotificationStatus(); }).catch(e => console.error(e));
         }
+
         // ================== اعلان‌ها ==================
         function checkNotificationStatus() {
             const btn = document.getElementById('notification-btn');
@@ -195,6 +181,7 @@
             if (!swRegistration || Notification.permission !== 'granted') return;
             swRegistration.active.postMessage({ type: 'SHOW_NOTIFICATION', payload: { title, body, tag, icon: 'icon-192.png' } });
         }
+
         // ================== WebSocket ==================
         const WS_URL = 'wss://ws.nobitex.ir/connection/websocket';
         const client = new Centrifuge(WS_URL, {});
@@ -204,6 +191,7 @@
         client.on('disconnected', () => { statusDot.className = 'status-dot disconnected'; statusText.innerText = 'اتصال قطع شد، تلاش مجدد...'; setTimeout(() => client.connect(), 3000); });
         client.on('error', () => { statusText.innerText = 'خطا در اتصال'; });
         client.connect();
+
         // ================== داده‌های بازارها ==================
         const marketData = {
             usdt: { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0 },
@@ -211,6 +199,7 @@
         };
         const SMA_PERIOD = 20, RSI_PERIOD = 14, NOTIFICATION_COOLDOWN = 60000;
         let candleSeries = null, chart = null, activeCandleSub = null;
+
         // ================== نمودار ==================
         function initChart() {
             const loadingEl = document.getElementById('chart-loading');
@@ -230,6 +219,7 @@
                 loadChartForMarket(currentMarket);
             } catch (e) { loadingEl.innerText = 'نمودار در دسترس نیست'; }
         }
+
         // ================== بارگذاری نمودار ==================
         function loadChartForMarket(market) {
             const cfg = MARKETS[market];
@@ -238,92 +228,83 @@
             loadingEl.style.display = 'block';
             loadingEl.style.color = 'var(--warn-color)';
             loadingEl.innerText = `در حال دریافت داده ${cfg.name}...`;
-            if (cfg.dataSource === 'udf') {
-                loadFromUDF(market);
-            } else {
-                loadFromCandleChannel(market);
-            }
+
+            // همیشه UDF را امتحان کن (هم برای BTC و هم USDT)
+            loadFromUDF(market);
         }
-        // ================== ۱. API تاریخی (برای BTC) ==================
+
+        // ================== UDF API (چندین روش) ==================
         async function loadFromUDF(market) {
             const cfg = MARKETS[market];
             const loadingEl = document.getElementById('chart-loading');
-            const resolutions = [60, 15, 5, 1]; // ترتیب: 1 ساعت، 15 دقیقه، 5 دقیقه، 1 دقیقه
-            const PROXY = 'https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=';
+            const resolutions = [60, 15, 5, 1];
+
+            // لیست منابع برای امتحان کردن
+            const sources = [
+                {
+                    name: 'Cloudflare Worker',
+                    build: (url) => `https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=${encodeURIComponent(url)}`
+                },
+                {
+                    name: 'AllOrigins',
+                    build: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+                },
+                {
+                    name: 'Direct (بدون پروکسی)',
+                    build: (url) => url
+                }
+            ];
+
             for (const res of resolutions) {
-                const timestamp = Date.now(); // cache buster
-                const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=${cfg.symbol}&resolution=${res}&countback=500&_=${timestamp}`;
-                const proxyUrl = PROXY + encodeURIComponent(nobitexUrl);
-                try {
-                    console.log(`🔄 تلاش UDF ${cfg.symbol} resolution=${res}`);
-                    const response = await fetch(proxyUrl);
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const data = await response.json();
-                    if (data.s === 'ok' && data.t && data.t.length > 0) {
-                        const candles = [];
-                        for (let i = 0; i < data.t.length; i++) {
-                            candles.push({
-                                time: data.t[i],
-                                open: Number(data.o[i]) / cfg.divider,
-                                high: Number(data.h[i]) / cfg.divider,
-                                low: Number(data.l[i]) / cfg.divider,
-                                close: Number(data.c[i]) / cfg.divider
-                            });
+                for (const src of sources) {
+                    const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=${cfg.symbol}&resolution=${res}&countback=500`;
+                    const fetchUrl = src.build(nobitexUrl);
+
+                    try {
+                        console.log(`🔄 تلاش ${cfg.symbol} | res=${res} | ${src.name}`);
+                        loadingEl.innerText = `تلاش ${src.name} (res=${res})...`;
+
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+                        const response = await fetch(fetchUrl, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        const data = await response.json();
+
+                        if (data.s === 'ok' && data.t && data.t.length > 0) {
+                            const candles = [];
+                            for (let i = 0; i < data.t.length; i++) {
+                                candles.push({
+                                    time: data.t[i],
+                                    open: Number(data.o[i]) / cfg.divider,
+                                    high: Number(data.h[i]) / cfg.divider,
+                                    low: Number(data.l[i]) / cfg.divider,
+                                    close: Number(data.c[i]) / cfg.divider
+                                });
+                            }
+                            if (candleSeries) { candleSeries.setData(candles); chart.timeScale().fitContent(); }
+                            loadingEl.style.display = 'none';
+                            console.log(`✅ ${candles.length} کندل ${cfg.name} از ${src.name} (res=${res})`);
+                            return;
+                        } else {
+                            console.warn(`⚠️ ${src.name} res=${res}: s=${data.s}`);
                         }
-                        if (candleSeries) { candleSeries.setData(candles); chart.timeScale().fitContent(); }
-                        loadingEl.style.display = 'none';
-                        console.log(`✅ ${candles.length} کندل ${cfg.name} (resolution=${res}) بارگذاری شد.`);
-                        // بعد از بارگذاری تاریخی، کانال کندل زنده را هم فعال کن
-                        loadFromCandleChannel(market, true);
-                        return;
-                    } else {
-                        console.warn(`⚠️ resolution=${res} پاسخ:`, data.s);
+                    } catch (e) {
+                        console.error(`❌ ${src.name} res=${res}:`, e.message);
                     }
-                } catch (e) {
-                    console.error(`❌ خطا در resolution=${res}:`, e.message);
                 }
             }
-            // اگر UDF شکست خورد، به کانال WebSocket سوییچ کن
-            console.warn(`⚠️ UDF برای ${cfg.name} ناموفق بود. سوییچ به کانال WebSocket...`);
-            loadingEl.innerText = 'UDF در دسترس نیست، سوییچ به WebSocket...';
-            loadFromCandleChannel(market);
+
+            // اگر همه روش‌ها شکست خوردند
+            loadingEl.style.display = 'block';
+            loadingEl.style.color = 'var(--warn-color)';
+            loadingEl.innerHTML = `⚠️ نوبیتکس داده تاریخی ${cfg.name} را برنگرداند.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>`;
+            console.error(`❌ همه روش‌ها برای ${cfg.name} ناموفق بودند.`);
         }
-        // ================== ۲. کانال WebSocket کندل (برای USDT و پشتیبان) ==================
-        function loadFromCandleChannel(market, silent = false) {
-            const cfg = MARKETS[market];
-            const loadingEl = document.getElementById('chart-loading');
-            // لغو اشتراک قبلی
-            if (activeCandleSub) { try { activeCandleSub.unsubscribe(); } catch (e) {} activeCandleSub = null; }
-            if (market !== currentMarket) return;
-            if (!silent) loadingEl.innerText = `در حال اتصال به کانال کندل ${cfg.name}...`;
-            const candleSub = client.newSubscription(`public:candle-${cfg.symbol}-60`, { delta: 'fossil' });
-            activeCandleSub = candleSub;
-            candleSub.on('subscribed', () => {
-                console.log(`✅ اشتراک در کانال کندل ${cfg.symbol} انجام شد`);
-                if (!silent) loadingEl.style.display = 'none';
-            });
-            candleSub.on('publication', (ctx) => {
-                const data = ctx.data;
-                if (data && data.t && data.o && data.h && data.l && data.c) {
-                    const candle = {
-                        time: data.t,
-                        open: Number(data.o) / cfg.divider,
-                        high: Number(data.h) / cfg.divider,
-                        low: Number(data.l) / cfg.divider,
-                        close: Number(data.c) / cfg.divider
-                    };
-                    if (candleSeries && market === currentMarket) {
-                        candleSeries.update(candle);
-                        loadingEl.style.display = 'none';
-                    }
-                }
-            });
-            candleSub.on('error', (err) => {
-                console.error(`⚠️ خطا در کانال کندل ${cfg.name}:`, err);
-                if (!silent) loadingEl.innerText = `خطا در دریافت کندل ${cfg.name}`;
-            });
-            candleSub.subscribe();
-        }
+
         // ================== RSI ==================
         function calculateRSI(market, newPrice) {
             const d = marketData[market];
@@ -336,9 +317,7 @@
                     const diff = d.rsiHistory[i] - d.rsiHistory[i - 1];
                     if (diff > 0) gains += diff; else losses += Math.abs(diff);
                 }
-                d.avgGain = gains / RSI_PERIOD;
-                d.avgLoss = losses / RSI_PERIOD;
-                d.rsiInit = true;
+                d.avgGain = gains / RSI_PERIOD; d.avgLoss = losses / RSI_PERIOD; d.rsiInit = true;
             } else {
                 const lastDiff = d.rsiHistory[d.rsiHistory.length - 1] - d.rsiHistory[d.rsiHistory.length - 2];
                 const curGain = lastDiff > 0 ? lastDiff : 0;
@@ -350,6 +329,7 @@
             const rs = d.avgGain / d.avgLoss;
             return 100 - (100 / (1 + rs));
         }
+
         // ================== پردازش داده ==================
         function processData(ctx, market) {
             let data = ctx.data;
@@ -367,6 +347,7 @@
                 updateDashboard(market, price);
             }
         }
+
         // ================== سیگنال ==================
         function generateSignal(price, sma, rsi) {
             if (sma === null || rsi === null) return { type: 'neutral', icon: '⏳', text: 'در حال تحلیل...', reason: 'منتظر دریافت داده کافی', confidence: 0, power: '--' };
@@ -379,6 +360,7 @@
             if (isBelow && rsi < 30) return { type: 'warning', icon: '⚡', text: 'احتیاط', reason: `RSI اشباع فروش (${rsi.toFixed(1)}) در روند نزولی`, confidence: 50, power: 'متوسط' };
             return { type: 'neutral', icon: '⏸️', text: 'خنثی', reason: 'شرایط نامشخص', confidence: 30, power: 'پایین' };
         }
+
         // ================== اعلان ==================
         function sendSignalNotification(market, signal, price) {
             if (signal.type !== 'strong-buy' && signal.type !== 'strong-sell') return;
@@ -392,10 +374,12 @@
             showNotification(title, `قیمت: ${priceFormatted}\n${signal.reason}`, 'signal-' + market);
             d.lastNotificationTime = now;
         }
+
         // ================== فرمت دقیق قیمت ==================
         function formatExact(price) {
             return Math.round(price).toLocaleString('fa-IR');
         }
+
         // ================== به‌روزرسانی داشبورد ==================
         function updateDashboard(market, price) {
             const d = marketData[market];
@@ -460,6 +444,7 @@
             cf.style.background = barColor;
             document.getElementById('power-display').innerText = signal.power;
         }
+
         // ================== سوییچ ==================
         function switchMarket(market) {
             currentMarket = market;
@@ -467,7 +452,6 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.getElementById('tab-' + market).classList.add('active');
             document.getElementById('price-label').innerText = MARKETS[market].label;
-            // بازنشانی
             document.getElementById('price-display').innerText = '---';
             document.getElementById('price-display').style.color = 'var(--text-main)';
             document.getElementById('sma-display').innerText = '--';
@@ -481,17 +465,15 @@
             document.getElementById('signal-text').className = 'signal-text neutral';
             document.getElementById('signal-reason').innerText = 'منتظر دریافت داده کافی برای تحلیل';
             document.getElementById('signal-card').className = 'signal-card neutral';
-            // بارگذاری نمودار
             loadChartForMarket(market);
-            // اگر داده ذخیره داریم، سریع نمایش بده
             if (marketData[market].lastPrice !== 0) {
                 setTimeout(() => {
-                    const d = marketData[market];
-                    document.getElementById('price-display').innerText = formatExact(d.lastPrice);
+                    document.getElementById('price-display').innerText = formatExact(marketData[market].lastPrice);
                 }, 100);
             }
             console.log(`🔄 سوییچ به ${MARKETS[market].name}`);
         }
+
         // ================== اشتراک‌ها ==================
         const subUSDT = client.newSubscription(MARKETS.usdt.channel, { delta: 'fossil' });
         subUSDT.on('publication', (ctx) => processData(ctx, 'usdt'));
@@ -502,6 +484,7 @@
         const subAll = client.newSubscription('public:market-stats-all', { delta: 'fossil' });
         subAll.on('publication', (ctx) => { processData(ctx, 'usdt'); processData(ctx, 'btc'); });
         subAll.subscribe();
+
         // ================== راه‌اندازی ==================
         function init() {
             loadPersistedData();
