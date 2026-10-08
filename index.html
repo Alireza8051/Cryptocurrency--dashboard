@@ -109,25 +109,13 @@
     <script>
         // ================== تنظیمات بازارها ==================
         const MARKETS = {
-            usdt: {
-                name: 'تتر',
-                symbol: 'USDTIRT',
-                channel: 'public:market-stats-USDTIRT',
-                label: 'قیمت لحظه‌ای تتر',
-                divider: 10
-            },
-            btc: {
-                name: 'بیت‌کوین',
-                symbol: 'BTCIRT',
-                channel: 'public:market-stats-BTCIRT',
-                label: 'قیمت لحظه‌ای بیت‌کوین',
-                divider: 10
-            }
+            usdt: { name: 'تتر', symbol: 'USDTIRT', channel: 'public:market-stats-USDTIRT', label: 'قیمت لحظه‌ای تتر', divider: 10 },
+            btc: { name: 'بیت‌کوین', symbol: 'BTCIRT', channel: 'public:market-stats-BTCIRT', label: 'قیمت لحظه‌ای بیت‌کوین', divider: 10 }
         };
         let currentMarket = localStorage.getItem('currentMarket') || 'usdt';
 
         // ================== ذخیره‌سازی ==================
-        const STORAGE_KEY = 'nobitex_dashboard_v3';
+        const STORAGE_KEY = 'nobitex_dashboard_v4';
         function savePersistedData() {
             try {
                 const toSave = {};
@@ -135,10 +123,8 @@
                     toSave[m] = {
                         priceHistory: marketData[m].priceHistory.slice(-50),
                         rsiHistory: marketData[m].rsiHistory.slice(-30),
-                        avgGain: marketData[m].avgGain,
-                        avgLoss: marketData[m].avgLoss,
-                        rsiInit: marketData[m].rsiInit,
-                        lastPrice: marketData[m].lastPrice,
+                        avgGain: marketData[m].avgGain, avgLoss: marketData[m].avgLoss,
+                        rsiInit: marketData[m].rsiInit, lastPrice: marketData[m].lastPrice,
                         lastSignal: marketData[m].lastSignal
                     };
                 }
@@ -162,8 +148,6 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').then(reg => { swRegistration = reg; checkNotificationStatus(); }).catch(e => console.error(e));
         }
-
-        // ================== اعلان‌ها ==================
         function checkNotificationStatus() {
             const btn = document.getElementById('notification-btn');
             if (!('Notification' in window)) { btn.innerText = '❌ پشتیبانی نمی‌شود'; btn.disabled = true; return; }
@@ -198,7 +182,7 @@
             btc: { priceHistory: [], rsiHistory: [], avgGain: 0, avgLoss: 0, rsiInit: false, lastPrice: 0, lastSignal: null, lastNotificationTime: 0 }
         };
         const SMA_PERIOD = 20, RSI_PERIOD = 14, NOTIFICATION_COOLDOWN = 60000;
-        let candleSeries = null, chart = null, activeCandleSub = null;
+        let candleSeries = null, chart = null;
 
         // ================== نمودار ==================
         function initChart() {
@@ -220,89 +204,76 @@
             } catch (e) { loadingEl.innerText = 'نمودار در دسترس نیست'; }
         }
 
-        // ================== بارگذاری نمودار ==================
+        // ================== بارگذاری نمودار - فقط مستقیم ==================
         function loadChartForMarket(market) {
             const cfg = MARKETS[market];
             const loadingEl = document.getElementById('chart-loading');
             if (candleSeries) candleSeries.setData([]);
             loadingEl.style.display = 'block';
             loadingEl.style.color = 'var(--warn-color)';
-            loadingEl.innerText = `در حال دریافت داده ${cfg.name}...`;
-
-            // همیشه UDF را امتحان کن (هم برای BTC و هم USDT)
-            loadFromUDF(market);
+            loadingEl.innerText = `اتصال مستقیم به نوبیتکس برای ${cfg.name}...`;
+            loadDirectFromNobitex(market);
         }
 
-        // ================== UDF API (چندین روش) ==================
-        async function loadFromUDF(market) {
+        // ================== اتصال مستقیم به API نوبیتکس ==================
+        async function loadDirectFromNobitex(market) {
             const cfg = MARKETS[market];
             const loadingEl = document.getElementById('chart-loading');
             const resolutions = [60, 15, 5, 1];
 
-            // لیست منابع برای امتحان کردن
-            const sources = [
-                {
-                    name: 'Cloudflare Worker',
-                    build: (url) => `https://ali-proxy-commint.alirezaalinejadmofrad.workers.dev/?url=${encodeURIComponent(url)}`
-                },
-                {
-                    name: 'AllOrigins',
-                    build: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-                },
-                {
-                    name: 'Direct (بدون پروکسی)',
-                    build: (url) => url
-                }
-            ];
-
             for (const res of resolutions) {
-                for (const src of sources) {
-                    const nobitexUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=${cfg.symbol}&resolution=${res}&countback=500`;
-                    const fetchUrl = src.build(nobitexUrl);
-
-                    try {
-                        console.log(`🔄 تلاش ${cfg.symbol} | res=${res} | ${src.name}`);
-                        loadingEl.innerText = `تلاش ${src.name} (res=${res})...`;
-
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-                        const response = await fetch(fetchUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                        const data = await response.json();
-
-                        if (data.s === 'ok' && data.t && data.t.length > 0) {
-                            const candles = [];
-                            for (let i = 0; i < data.t.length; i++) {
-                                candles.push({
-                                    time: data.t[i],
-                                    open: Number(data.o[i]) / cfg.divider,
-                                    high: Number(data.h[i]) / cfg.divider,
-                                    low: Number(data.l[i]) / cfg.divider,
-                                    close: Number(data.c[i]) / cfg.divider
-                                });
-                            }
-                            if (candleSeries) { candleSeries.setData(candles); chart.timeScale().fitContent(); }
-                            loadingEl.style.display = 'none';
-                            console.log(`✅ ${candles.length} کندل ${cfg.name} از ${src.name} (res=${res})`);
-                            return;
-                        } else {
-                            console.warn(`⚠️ ${src.name} res=${res}: s=${data.s}`);
+                const url = `https://apiv2.nobitex.ir/market/udf/history?symbol=${cfg.symbol}&resolution=${res}&countback=500`;
+                
+                try {
+                    console.log(`🔄 Direct API: ${cfg.symbol} res=${res}`);
+                    loadingEl.innerText = `اتصال مستقیم (res=${res})...`;
+                    
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    console.log(`📡 Status: ${response.status} | res=${res}`);
+                    
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    const data = await response.json();
+                    console.log(`📦 Response s=${data.s} | candles=${data.t ? data.t.length : 0}`);
+                    
+                    if (data.s === 'ok' && data.t && data.t.length > 0) {
+                        const candles = [];
+                        for (let i = 0; i < data.t.length; i++) {
+                            candles.push({
+                                time: data.t[i],
+                                open: Number(data.o[i]) / cfg.divider,
+                                high: Number(data.h[i]) / cfg.divider,
+                                low: Number(data.l[i]) / cfg.divider,
+                                close: Number(data.c[i]) / cfg.divider
+                            });
                         }
-                    } catch (e) {
-                        console.error(`❌ ${src.name} res=${res}:`, e.message);
+                        if (candleSeries) { candleSeries.setData(candles); chart.timeScale().fitContent(); }
+                        loadingEl.style.display = 'none';
+                        console.log(`✅ ${candles.length} کندل ${cfg.name} (res=${res}) از اتصال مستقیم`);
+                        return;
+                    } else if (data.s === 'no_data') {
+                        console.warn(`⚠️ res=${res}: no_data`);
+                    } else {
+                        console.warn(`⚠️ res=${res}: پاسخ نامعتبر`, data);
+                    }
+                } catch (e) {
+                    console.error(`❌ Direct res=${res}:`, e.message);
+                    // اگر خطای CORS بود، پیام واضح بده
+                    if (e.message.includes('Failed to fetch') || e.name === 'TypeError') {
+                        loadingEl.innerHTML = `❌ اتصال مستقیم مسدود است (CORS).<br>نوبیتکس درخواست‌های github.io را رد می‌کند.<br><span style="color:#ffc107;font-size:10px">نیاز به پروکسی داریم.</span>`;
                     }
                 }
             }
 
-            // اگر همه روش‌ها شکست خوردند
+            // اگر همه شکست خوردند
             loadingEl.style.display = 'block';
             loadingEl.style.color = 'var(--warn-color)';
-            loadingEl.innerHTML = `⚠️ نوبیتکس داده تاریخی ${cfg.name} را برنگرداند.<br><span style="color:#00c853;font-size:11px">سیگنال‌ها همچنان کار می‌کنند ✅</span>`;
-            console.error(`❌ همه روش‌ها برای ${cfg.name} ناموفق بودند.`);
+            loadingEl.innerHTML = `⚠️ نوبیتکس داده تاریخی ${cfg.name} را برنگرداند.<br><span style="color:#888;font-size:10px">کنسول مرورگر را برای جزئیات باز کنید.</span>`;
         }
 
         // ================== RSI ==================
@@ -471,7 +442,6 @@
                     document.getElementById('price-display').innerText = formatExact(marketData[market].lastPrice);
                 }, 100);
             }
-            console.log(`🔄 سوییچ به ${MARKETS[market].name}`);
         }
 
         // ================== اشتراک‌ها ==================
